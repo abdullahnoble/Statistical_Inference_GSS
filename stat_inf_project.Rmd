@@ -1,0 +1,149 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+The General Social Survey (GSS) is a nationally representative survey of adults in the United States conducted since 1972.The GSS collects data on contemporary American society in order to monitor and explain trends in opinions, attitudes and behaviors. . The GSS has adopted questions from earlier surveys which allows researchers to conduct comparisons for up to 80 years.
+
+The GSS contains a standard core of demographic, behavioral, and attitudinal questions, plus topics of special interest. Among the topics covered are civil liberties, crime and violence, intergroup tolerance, morality, national spending priorities, psychological well-being, social mobility, and stress and traumatic events.
+
+The data used in this project is contained in gss.Rdata. This exerpt of the full GSS cumulative file 1972-2012 is a covenient data resource for students to learn about statistical reasoning using R. It contains 57061 observations made on 114 variables, which are described in the gss.html codebook. Each variable corresponds to a specific question asked to the survey respondent. Expectedly, not every question is applicable to every respondent.
+
+* * *
+
+## Part 2: Research question
+Question: Whether being a US citizen affects a person's salary or not?
+Reason for interest: Large companies in US could recruit skilled employees from other countries where standard of living is not that good so that it has to pay less salary to the non-US citizen employees.This leads to reduced cost to company for a particular skill set.
+
+* * *
+
+### Variables used
+**USCITZN**
+
+IS R US CITIZEN
+
+Now we would like to ask you about U.S. citizenship. Are you… IF RESPONDENT SAYS S/HE IS “NATURALIZED,” CODE “A U.S. CITIZEN.”
+
+VALUE	LABEL
+
+NA	IAP
+
+1	A U.S. Citizen
+
+2	Not a U.S. Citizen
+
+3	A U.S. CITIZEN BORN IN PUERTO RICO, THE U.S. VIRGIN ISLANDS, OR THE NORTHERN MARIANAS ISLANDS
+
+4	BORN OUTSIDE OF THE UNITED STATES TO PARENTS WHO WERE U.S CITIZENS AT THAT TIME (IF VOLUNTEERED)
+
+8	DONT KNOW
+
+NA	NA
+
+**CONINC**
+
+FAMILY INCOME IN CONSTANT DOLLARS
+
+Inflation-adjusted family income
+
+```{r}
+gss %>%
+  filter(!is.na(uscitzn) & !is.na(coninc)) %>%
+  select(uscitzn,coninc)  -> gss_analysis
+dim(gss_analysis)
+```
+Now, we have a new dataframe with 659 observations on these two variables.
+
+
+## Part 3: Exploratory data analysis
+
+**Plots**
+
+```{r}
+ggplot(data=gss_analysis,aes(x=coninc)) + geom_histogram() + facet_wrap(~uscitzn)
+```
+
+We can clearly see that there are only about 10 or less data points(rows) for the groups of "A U.S. CITIZEN BORN IN PUERTO RICO, THE U.S. VIRGIN ISLANDS, OR THE NORTHERN MARIANAS ISLANDS" and "BORN OUTSIDE OF THE UNITED STATES TO PARENTS WHO WERE U.S CITIZENS AT THAT TIME (IF VOLUNTEERED)".Moreover, there is no person who participated in survey belonging to the group of "A U.S. CITIZEN BORN IN PUERTO RICO, THE U.S. VIRGIN ISLANDS, OR THE NORTHERN MARIANAS ISLANDS" with income above $50000.
+
+Plot between the largest groups of "A U.S. Citizen" and "Not a U.S. Citizen" and their corresponding Inflation-adjusted family income resulted in right-skewed plots.
+* * *
+
+## Part 4: Inference
+
+### Hypothesis
+**Null Hypothesis:**Everything is normal and there is nothing going on. The total Inflation-adjusted family income is same for all citizenship based groups.
+
+**Alternative Hypothesis:**There is something odd. Inflation-adjusted family income is different for at-least one pair of citizenship based groups.
+
+I will be using ANOVA to test my hypothesis.
+
+### Conditions
+
+**Independence: **GSS surveys are randomly sampled. We can consider our data to have independence within groups.
+Since a person can't belong to two of the citizenship based groups, our data has independence between groups too. 
+
+**Approximate Normal Distribution**
+Let's take a look at these plots
+```{r}
+# 4 graphs in 2 rows
+par(mfrow = c(2,2))
+# Iterate on 4 groups and graph a QQ plot to test normality
+citzn_groups = c("A U.S. Citizen","Not A U.S. Citizen","A U.S. Citizen Born In Puerto Rico, The U.S. Virgin Islands, Or The Northern Marianas Islands","Born Outside Of The United States To Parents Who Were U.S Citizens At That Time (If Volunteered)")
+for (i in 1:4) {
+df = gss_analysis %>% filter(uscitzn == citzn_groups[i])  
+qqnorm(df$coninc, main=citzn_groups[i])
+qqline(df$coninc)
+}
+```
+
+We can observe the right skewness in these plots.
+
+**Equal Variance across Groups**
+```{r}
+ggplot(data=gss_analysis,aes(y=coninc)) + geom_boxplot(aes(fill=uscitzn))
+```
+
+The box-plot shows difference in variance across the groups.Variability is highest for "Born Outside Of The United States To Parents Who Were U.S Citizens At That Time (If Volunteered)" and lowest for "A U.S. Citizen Born In Puerto Rico, The U.S. Virgin Islands, Or The Northern Marianas Islands".
+
+The conditions for ANOVA are not completely satisfied. The results of our test should be interpreted carefully. There might be more hidden factors which may affect our result like highest education or something else.
+
+**ANOVA**
+```{r}
+anova(lm(coninc ~ uscitzn, data=gss_analysis))
+```
+
+The p-value is very close to zero. Hence, we can conclude that our null hypothesis is wrong and there is atleast one pair of group whose mean Inflation-adjusted family income is affected by the citizenship.
+To determine which pair of group is affected by the citizenship, let's perform multiple pairwise t-tests using Bonferroni correction to reduce the possibility of Type-1 error as the p value comes out to be very small. This correction will reduce the significance level to "0.05/k" where k is the number of tests, which will be 6 here. New Significance level = 0.05/6.
+```{r}
+pairwise.t.test(gss_analysis$coninc, gss_analysis$uscitzn, p.adj="bonferroni")
+```
+
+We are getting almost zero p-value for the pair "A U.S. Citizen" and "Not A U.S. Citizen". Other p-values are above 0.05/6.
+
+### Conclusion
+We are now at a point where we can say that mean Inflation-adjusted family income for "A U.S. Citizen" and "Not A U.S. Citizen" groups are different.
